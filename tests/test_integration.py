@@ -26,9 +26,11 @@ def test_continuous_finite_scalar(value):
     )
     model.connect("indeps.x", "passthrough.in")
 
-    prob.setup()
-    prob.run_model()
-    prob.cleanup()
+    try:
+        prob.setup()
+        prob.run_model()
+    finally:
+        prob.cleanup()
 
     # Using a normal == comparison will not consider NaNs as equal.
     assert np.allclose(prob["indeps.x"], value, atol=0.0, rtol=0.0, equal_nan=True)
@@ -57,9 +59,11 @@ def test_continuous_finite_scalar_macros(value):
     )
     model.connect("indeps.x", "passthrough.in")
 
-    prob.setup()
-    prob.run_model()
-    prob.cleanup()
+    try:
+        prob.setup()
+        prob.run_model()
+    finally:
+        prob.cleanup()
 
     # Using a normal == comparison will not consider NaNs as equal.
     assert np.allclose(prob["indeps.x"], value, atol=0.0, rtol=0.0, equal_nan=True)
