@@ -14,6 +14,9 @@ class ExcelComponent(om.ExplicitComponent):
         self.options.declare("file_path", types=str)
         self.options.declare("inputs", types=list)
         self.options.declare("outputs", types=list)
+        self.options.declare("pre_macros", types=list, default=[])
+        self.options.declare("main_macros", types=list, default=[])
+        self.options.declare("post_macros", types=list, default=[])
 
         self.app = None
 
@@ -31,6 +34,9 @@ class ExcelComponent(om.ExplicitComponent):
     def compute(self, inputs, outputs, discrete_inputs=None, discrete_outputs=None):
         book = self.app.books.open(self.options["file_path"])
 
+        for macro in self.options["pre_macros"]:
+            book.macro(macro).run()
+
         self.app.calculation = "manual"
         for var_map in self.options["inputs"]:
             self.app.range(var_map.ext_name).options(convert=np.array).value = inputs[
@@ -40,12 +46,16 @@ class ExcelComponent(om.ExplicitComponent):
         self.app.calculation = "automatic"
         self.app.calculate()
 
-        # TODO: Here is a good time to run some macros.
+        for macro in self.options["main_macros"]:
+            book.macro(macro).run()
 
         for var_map in self.options["outputs"]:
             outputs[var_map.name] = (
                 self.app.range(var_map.ext_name).options(convert=np.array).value
             )
+
+        for macro in self.options["post_macros"]:
+            book.macro(macro).run()
 
         # Closes without saving
         book.close()
