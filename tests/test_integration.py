@@ -9,7 +9,7 @@ from openmdao_bridge_excel import ExcelComponent
 from openmdao_utils.external_tools import VarMap
 
 
-@settings(deadline=1000)
+@settings(deadline=2000)
 @given(st.floats(allow_nan=False, allow_infinity=False))
 def test_continuous_finite_scalar(value):
     prob = om.Problem()
