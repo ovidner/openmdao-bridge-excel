@@ -27,7 +27,7 @@ class ExcelComponent(om.ExplicitComponent):
         for var_map in self.options["outputs"]:
             self.add_output(name=var_map.name, val=nans(var_map.shape))
 
-        self.app = xlwings.App(visible=False)
+        self.app = xlwings.App(visible=False, add_book=False)
         self.app.display_alerts = False
         self.app.screen_updating = False
 
