@@ -1,3 +1,5 @@
+import hashlib
+import itertools
 import os.path
 
 import numpy as np
@@ -7,6 +9,21 @@ import xlwings
 
 def nans(shape):
     return np.ones(shape) * np.nan
+
+
+MACRO_WRAPPER_BASE = """Option Private Module
+Option Explicit"""
+
+MACRO_WRAPPER_INSTANCE = """Function {wrapped_macro_name}()
+    On Error Resume Next
+    {macro_name}
+    {wrapped_macro_name} = Array(Err.Number, Err.Source, Err.Description, Err.HelpFile, Err.HelpContext, Err.LastDllError)
+End Function"""
+
+
+def wrapper_macro_name(macro_name):
+    macro_name_hash = hashlib.md5(macro_name.encode("utf-8")).hexdigest()
+    return f"wrapped_{macro_name_hash}"
 
 
 class ExcelComponent(om.ExplicitComponent):
@@ -34,8 +51,34 @@ class ExcelComponent(om.ExplicitComponent):
     def compute(self, inputs, outputs, discrete_inputs=None, discrete_outputs=None):
         book = self.app.books.open(self.options["file_path"])
 
+        all_macros = set(
+            itertools.chain(
+                self.options["pre_macros"],
+                self.options["main_macros"],
+                self.options["post_macros"],
+            )
+        )
+
+        if len(all_macros):
+            vbe = self.app.api.VBE
+            vb_project = vbe.ActiveVBProject
+
+            wrapped_macros_comp = vb_project.VBComponents.Add(1)
+            wrapped_macros_comp.Name = "ombe_wrapped_macros"
+
+            wrapped_macros_code = wrapped_macros_comp.CodeModule
+            wrapped_macros_code.AddFromString(MACRO_WRAPPER_BASE)
+
+            for macro_name in all_macros:
+                wrapped_macros_code.AddFromString(
+                    MACRO_WRAPPER_INSTANCE.format(
+                        macro_name=macro_name,
+                        wrapped_macro_name=wrapper_macro_name(macro_name),
+                    )
+                )
+
         for macro in self.options["pre_macros"]:
-            book.macro(macro).run()
+            book.macro(wrapper_macro_name(macro)).run()
 
         self.app.calculation = "manual"
         for var_map in self.options["inputs"]:
@@ -47,7 +90,7 @@ class ExcelComponent(om.ExplicitComponent):
         self.app.calculate()
 
         for macro in self.options["main_macros"]:
-            book.macro(macro).run()
+            book.macro(wrapper_macro_name(macro)).run()
 
         for var_map in self.options["outputs"]:
             outputs[var_map.name] = (
@@ -55,7 +98,7 @@ class ExcelComponent(om.ExplicitComponent):
             )
 
         for macro in self.options["post_macros"]:
-            book.macro(macro).run()
+            book.macro(wrapper_macro_name(macro)).run()
 
         # Closes without saving
         book.close()
