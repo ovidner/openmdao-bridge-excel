@@ -68,3 +68,34 @@ def test_continuous_finite_scalar_macros(value):
     assert np.allclose(
         prob["passthrough.out"], prob["indeps.x"], atol=0.0, rtol=0.0, equal_nan=True
     )
+
+
+@pytest.mark.parametrize("stage", ["pre", "main", "post"])
+def test_macro_errors(stage):
+    fudge_up_macros = ["FudgeUp"]
+    prob = om.Problem()
+    model = prob.model
+
+    model.add_subsystem("indeps", om.IndepVarComp("x", val=1))
+    model.add_subsystem(
+        "passthrough",
+        ExcelComponent(
+            file_path="tests/data/fudge_up.xlsm",
+            inputs=[VarMap("in", "A1")],
+            outputs=[VarMap("out", "A1")],
+            pre_macros=fudge_up_macros if stage == "pre" else [],
+            main_macros=fudge_up_macros if stage == "main" else [],
+            post_macros=fudge_up_macros if stage == "post" else [],
+        ),
+    )
+    model.connect("indeps.x", "passthrough.in")
+
+    try:
+        prob.setup()
+        with pytest.raises(
+            om.AnalysisError,
+            match=f'Excel macro "FudgeUp" executed in "{stage}" stage failed',
+        ):
+            prob.run_model()
+    finally:
+        prob.cleanup()
