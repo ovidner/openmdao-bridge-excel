@@ -4,6 +4,9 @@ import os.path
 import numpy as np
 import openmdao.api as om
 import xlwings
+from pywintypes import com_error
+from openmdao_utils.external_tools import kill_pid
+from openmdao_utils.timeout import TimeoutComponentMixin
 
 from .macro_execution import run_and_raise_macro, wrap_macros
 
@@ -12,7 +15,7 @@ def nans(shape):
     return np.ones(shape) * np.nan
 
 
-class ExcelComponent(om.ExplicitComponent):
+class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
     def initialize(self):
         self.options.declare("file_path", types=str)
         self.options.declare("inputs", types=list)
@@ -22,6 +25,7 @@ class ExcelComponent(om.ExplicitComponent):
         self.options.declare("post_macros", types=list, default=[])
 
         self.app = None
+        self.app_pid = None
 
     def setup(self):
         for var_map in self.options["inputs"]:
@@ -31,10 +35,11 @@ class ExcelComponent(om.ExplicitComponent):
             self.add_output(name=var_map.name, val=nans(var_map.shape))
 
         self.app = xlwings.App(visible=False, add_book=False)
+        self.app_pid = self.app.pid
         self.app.display_alerts = False
         self.app.screen_updating = False
 
-    def compute(self, inputs, outputs, discrete_inputs=None, discrete_outputs=None):
+    def open_and_run(self, inputs, outputs, discrete_inputs, discrete_outputs):
         book = self.app.books.open(self.options["file_path"])
 
         all_macros = set(
@@ -74,6 +79,24 @@ class ExcelComponent(om.ExplicitComponent):
         # Closes without saving
         book.close()
 
+    def compute(self, inputs, outputs, discrete_inputs=None, discrete_outputs=None):
+        try:
+            self.open_and_run(
+                inputs, outputs, discrete_inputs or {}, discrete_outputs or {}
+            )
+        except Exception as exc:
+            if self.timeout_state.reached:
+                raise om.AnalysisError("Timeout reached!")
+            else:
+                raise exc
+
+    def handle_timeout(self):
+        kill_pid(self.app_pid)
+
     def cleanup(self):
-        self.app.quit()
+        try:
+            self.app.quit()
+        except com_error as exc:
+            pass
+        kill_pid(self.app_pid)
         super().cleanup()
