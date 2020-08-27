@@ -60,6 +60,7 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
         file_path = self.options["file_path"]
         logger.debug(f"Opening {file_path}...")
         book = self.app.books.open(file_path)
+        book.api.EnableAutoRecover = False
 
         all_macros = set(
             itertools.chain(
