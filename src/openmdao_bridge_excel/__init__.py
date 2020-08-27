@@ -5,10 +5,9 @@ import numpy as np
 import openmdao.api as om
 import xlwings
 from pywintypes import com_error
-from openmdao_utils.external_tools import kill_pid
-from openmdao_utils.timeout import TimeoutComponentMixin
 
 from .macro_execution import run_and_raise_macro, wrap_macros
+from .timeout_utils import TimeoutComponentMixin, kill_pid
 
 
 def nans(shape):
