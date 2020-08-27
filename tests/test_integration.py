@@ -10,6 +10,8 @@ from hypothesis import given, settings
 
 from openmdao_bridge_excel import ExcelComponent, ExcelVar
 
+TEST_FILE_PATH = "tests/data/test.xlsm"
+
 
 @dataclasses.dataclass
 class ExecutionTime:
@@ -29,64 +31,42 @@ class ExecutionTime:
 
 
 @given(st.floats(allow_nan=False, allow_infinity=False))
-def test_continuous_finite_scalar(value):
+@pytest.mark.parametrize("mode", ["formula", "macro"])
+def test_continuous_finite_scalar(mode, value):
     prob = om.Problem()
     model = prob.model
 
-    model.add_subsystem("indeps", om.IndepVarComp("x", val=value))
-    model.add_subsystem(
-        "passthrough",
-        ExcelComponent(
-            file_path="tests/data/passthrough.xlsx",
-            inputs=[ExcelVar("in", "a")],
-            outputs=[ExcelVar("out", "b")],
-        ),
-    )
-    model.connect("indeps.x", "passthrough.in")
-
-    try:
-        prob.setup()
-        prob.run_model()
-    finally:
-        prob.cleanup()
-
-    # Using a normal == comparison will not consider NaNs as equal.
-    assert np.allclose(prob["indeps.x"], value, atol=0.0, rtol=0.0, equal_nan=True)
-    assert np.allclose(
-        prob["passthrough.out"], prob["indeps.x"], atol=0.0, rtol=0.0, equal_nan=True
-    )
-
-
-@given(st.floats(allow_nan=False, allow_infinity=False))
-def test_continuous_finite_scalar_macros(value):
-    prob = om.Problem()
-    model = prob.model
-
-    model.add_subsystem("indeps", om.IndepVarComp("x", val=value))
-    model.add_subsystem(
-        "passthrough",
-        ExcelComponent(
-            file_path="tests/data/passthrough_macros.xlsm",
-            inputs=[ExcelVar("in", "a")],
-            outputs=[ExcelVar("out", "b")],
+    if mode == "formula":
+        comp = ExcelComponent(
+            file_path=TEST_FILE_PATH,
+            inputs=[ExcelVar("in", "FormulaA")],
+            outputs=[ExcelVar("out", "FormulaB")],
+        )
+    elif mode == "macro":
+        comp = ExcelComponent(
+            file_path=TEST_FILE_PATH,
+            inputs=[ExcelVar("in", "MacroA")],
+            outputs=[ExcelVar("out", "MacroB")],
             pre_macros=["NameA", "NameB"],
             main_macros=["CopyAToB"],
             post_macros=["EnsureBEqualsA"],
-        ),
+        )
+    else:
+        raise ValueError(mode)
+
+    model.add_subsystem(
+        "excel", comp,
     )
-    model.connect("indeps.x", "passthrough.in")
 
     try:
         prob.setup()
+        prob.set_val("excel.in", value)
         prob.run_model()
     finally:
         prob.cleanup()
 
     # Using a normal == comparison will not consider NaNs as equal.
-    assert np.allclose(prob["indeps.x"], value, atol=0.0, rtol=0.0, equal_nan=True)
-    assert np.allclose(
-        prob["passthrough.out"], prob["indeps.x"], atol=0.0, rtol=0.0, equal_nan=True
-    )
+    assert np.allclose(prob["excel.out"], value, atol=0.0, rtol=0.0, equal_nan=True)
 
 
 @pytest.mark.parametrize("stage", ["pre", "main", "post"])
@@ -95,19 +75,17 @@ def test_macro_errors(stage):
     prob = om.Problem()
     model = prob.model
 
-    model.add_subsystem("indeps", om.IndepVarComp("x", val=1))
     model.add_subsystem(
-        "passthrough",
+        "excel",
         ExcelComponent(
-            file_path="tests/data/fudge_up.xlsm",
-            inputs=[ExcelVar("in", "A1")],
-            outputs=[ExcelVar("out", "A1")],
+            file_path=TEST_FILE_PATH,
+            inputs=[],
+            outputs=[],
             pre_macros=fudge_up_macros if stage == "pre" else [],
             main_macros=fudge_up_macros if stage == "main" else [],
             post_macros=fudge_up_macros if stage == "post" else [],
         ),
     )
-    model.connect("indeps.x", "passthrough.in")
 
     try:
         prob.setup()
@@ -120,22 +98,18 @@ def test_macro_errors(stage):
         prob.cleanup()
 
 
-@given(
-    timeout=st.floats(min_value=2, max_value=8, allow_nan=False, allow_infinity=False)
-)
-@settings(deadline=10000, max_examples=3)
 @pytest.mark.parametrize("stage", ["pre", "main", "post"])
-@pytest.mark.parametrize("slow_macros", [["Breakable10"], ["NonBreakable10"]])
+@pytest.mark.parametrize("timeout", [1, 10])
+@pytest.mark.parametrize("slow_macros", [["SleepBreakable"], ["SleepNonbreakable"]])
 def test_timeout(stage, timeout, slow_macros):
     prob = om.Problem()
     model = prob.model
 
-    model.add_subsystem("indeps", om.IndepVarComp("x", val=1))
     model.add_subsystem(
-        "passthrough",
+        "excel",
         ExcelComponent(
-            file_path="tests/data/sleep.xlsm",
-            inputs=[ExcelVar("in", "A1")],
+            file_path=TEST_FILE_PATH,
+            inputs=[],
             outputs=[ExcelVar("out", "A1")],
             pre_macros=slow_macros if stage == "pre" else [],
             main_macros=slow_macros if stage == "main" else [],
@@ -143,7 +117,6 @@ def test_timeout(stage, timeout, slow_macros):
             timeout=timeout,
         ),
     )
-    model.connect("indeps.x", "passthrough.in")
 
     try:
         prob.setup()
@@ -154,4 +127,44 @@ def test_timeout(stage, timeout, slow_macros):
         prob.cleanup()
 
     # Should be finished within the timeout limit plus some overhead, but not too early
-    assert timeout <= execution_time.duration <= (timeout + 1)
+    assert timeout <= execution_time.duration <= (timeout + 3)
+
+
+@pytest.mark.parametrize("stage", ["main", "post"])
+@pytest.mark.parametrize("slow_macros", [["SleepBreakable"], ["SleepNonbreakable"]])
+@pytest.mark.parametrize("value", [1, 3])
+def test_timeout_recovery(stage, slow_macros, value):
+    prob = om.Problem()
+    model = prob.model
+
+    comp = model.add_subsystem(
+        "excel",
+        ExcelComponent(
+            file_path=TEST_FILE_PATH,
+            inputs=[
+                ExcelVar("in", "FormulaA"),
+                ExcelVar("sleep_duration", "SleepDuration"),
+            ],
+            outputs=[ExcelVar("out", "FormulaB")],
+            # We can't adjust the sleep duration of the pre stage, so we let it be.
+            pre_macros=[],
+            main_macros=slow_macros if stage == "main" else [],
+            post_macros=slow_macros if stage == "post" else [],
+            timeout=5,
+        ),
+    )
+
+    try:
+        prob.setup()
+
+        prob.set_val("excel.in", value)
+        prob.set_val("excel.sleep_duration", 60)
+        with pytest.raises(om.AnalysisError, match="Timeout reached!"):
+            prob.run_model()
+
+        prob.set_val("excel.in", value)
+        prob.set_val("excel.sleep_duration", 0)
+        prob.run_model()
+        assert prob.get_val("excel.out") == value
+    finally:
+        prob.cleanup()
