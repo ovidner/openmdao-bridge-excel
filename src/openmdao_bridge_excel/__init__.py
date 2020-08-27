@@ -41,12 +41,17 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
         for var in self.options["outputs"]:
             self.add_output(name=var.name, val=nans(var.shape))
 
-        self.app = xlwings.App(visible=False, add_book=False)
-        self.app_pid = self.app.pid
-        self.app.display_alerts = False
-        self.app.screen_updating = False
+        self.ensure_app()
+
+    def ensure_app(self):
+        if not self.app_pid:
+            self.app = xlwings.App(visible=False, add_book=False)
+            self.app_pid = self.app.pid
+            self.app.display_alerts = False
+            self.app.screen_updating = False
 
     def open_and_run(self, inputs, outputs, discrete_inputs, discrete_outputs):
+        self.ensure_app()
         book = self.app.books.open(self.options["file_path"])
 
         all_macros = set(
