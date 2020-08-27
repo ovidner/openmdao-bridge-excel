@@ -97,11 +97,13 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
 
     def handle_timeout(self):
         kill_pid(self.app_pid)
+        self.app_pid = None
 
     def cleanup(self):
-        try:
-            self.app.quit()
-        except com_error as exc:
-            pass
-        kill_pid(self.app_pid)
+        if self.app_pid:
+            try:
+                self.app.quit()
+            except com_error as exc:
+                pass
+            kill_pid(self.app_pid)
         super().cleanup()
