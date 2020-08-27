@@ -1,7 +1,6 @@
 import dataclasses
 import time
 
-import hypothesis.extra.numpy as np_st
 import hypothesis.strategies as st
 import numpy as np
 import openmdao.api as om
