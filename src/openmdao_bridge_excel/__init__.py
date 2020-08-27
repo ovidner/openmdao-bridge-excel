@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 import os.path
 
@@ -14,6 +15,13 @@ def nans(shape):
     return np.ones(shape) * np.nan
 
 
+@dataclasses.dataclass(frozen=True)
+class ExcelVar:
+    name: str
+    range: str
+    shape = (1,)
+
+
 class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
     def initialize(self):
         self.options.declare("file_path", types=str)
@@ -27,11 +35,11 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
         self.app_pid = None
 
     def setup(self):
-        for var_map in self.options["inputs"]:
-            self.add_input(name=var_map.name, val=nans(var_map.shape))
+        for var in self.options["inputs"]:
+            self.add_input(name=var.name, val=nans(var.shape))
 
-        for var_map in self.options["outputs"]:
-            self.add_output(name=var_map.name, val=nans(var_map.shape))
+        for var in self.options["outputs"]:
+            self.add_output(name=var.name, val=nans(var.shape))
 
         self.app = xlwings.App(visible=False, add_book=False)
         self.app_pid = self.app.pid
@@ -56,10 +64,8 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
             run_and_raise_macro(book, macro, "pre")
 
         self.app.calculation = "manual"
-        for var_map in self.options["inputs"]:
-            self.app.range(var_map.ext_name).options(convert=np.array).value = inputs[
-                var_map.name
-            ]
+        for var in self.options["inputs"]:
+            self.app.range(var.range).options(convert=np.array).value = inputs[var.name]
 
         self.app.calculation = "automatic"
         self.app.calculate()
@@ -67,9 +73,9 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
         for macro in self.options["main_macros"]:
             run_and_raise_macro(book, macro, "main")
 
-        for var_map in self.options["outputs"]:
-            outputs[var_map.name] = (
-                self.app.range(var_map.ext_name).options(convert=np.array).value
+        for var in self.options["outputs"]:
+            outputs[var.name] = (
+                self.app.range(var.range).options(convert=np.array).value
             )
 
         for macro in self.options["post_macros"]:

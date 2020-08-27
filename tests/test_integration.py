@@ -8,8 +8,7 @@ import openmdao.api as om
 import pytest
 from hypothesis import given, settings
 
-from openmdao_bridge_excel import ExcelComponent
-from openmdao_utils.external_tools import VarMap
+from openmdao_bridge_excel import ExcelComponent, ExcelVar
 
 
 @dataclasses.dataclass
@@ -39,8 +38,8 @@ def test_continuous_finite_scalar(value):
         "passthrough",
         ExcelComponent(
             file_path="tests/data/passthrough.xlsx",
-            inputs=[VarMap("in", "a")],
-            outputs=[VarMap("out", "b")],
+            inputs=[ExcelVar("in", "a")],
+            outputs=[ExcelVar("out", "b")],
         ),
     )
     model.connect("indeps.x", "passthrough.in")
@@ -68,8 +67,8 @@ def test_continuous_finite_scalar_macros(value):
         "passthrough",
         ExcelComponent(
             file_path="tests/data/passthrough_macros.xlsm",
-            inputs=[VarMap("in", "a")],
-            outputs=[VarMap("out", "b")],
+            inputs=[ExcelVar("in", "a")],
+            outputs=[ExcelVar("out", "b")],
             pre_macros=["NameA", "NameB"],
             main_macros=["CopyAToB"],
             post_macros=["EnsureBEqualsA"],
@@ -101,8 +100,8 @@ def test_macro_errors(stage):
         "passthrough",
         ExcelComponent(
             file_path="tests/data/fudge_up.xlsm",
-            inputs=[VarMap("in", "A1")],
-            outputs=[VarMap("out", "A1")],
+            inputs=[ExcelVar("in", "A1")],
+            outputs=[ExcelVar("out", "A1")],
             pre_macros=fudge_up_macros if stage == "pre" else [],
             main_macros=fudge_up_macros if stage == "main" else [],
             post_macros=fudge_up_macros if stage == "post" else [],
@@ -136,8 +135,8 @@ def test_timeout(stage, timeout, slow_macros):
         "passthrough",
         ExcelComponent(
             file_path="tests/data/sleep.xlsm",
-            inputs=[VarMap("in", "A1")],
-            outputs=[VarMap("out", "A1")],
+            inputs=[ExcelVar("in", "A1")],
+            outputs=[ExcelVar("out", "A1")],
             pre_macros=slow_macros if stage == "pre" else [],
             main_macros=slow_macros if stage == "main" else [],
             post_macros=slow_macros if stage == "post" else [],
