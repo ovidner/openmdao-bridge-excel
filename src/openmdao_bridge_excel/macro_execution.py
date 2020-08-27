@@ -1,7 +1,10 @@
 import dataclasses
 import hashlib
+import logging
 
 import openmdao.api as om
+
+logger = logging.getLogger(__package__)
 
 MACRO_WRAPPER_BASE = """Option Private Module
 Option Explicit"""
@@ -61,7 +64,11 @@ def run_wrapped_macro(book, macro_name):
 
 
 def run_and_raise_macro(book, macro, stage):
+    logger.info(f"Running macro {macro} at {stage} stage...")
     result = run_wrapped_macro(book, macro)
+    logger.info(
+        f"Finished running macro {macro} at {stage} stage with result: {result}"
+    )
 
     if not result.success:
         raise om.AnalysisError(

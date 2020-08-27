@@ -1,5 +1,6 @@
 import dataclasses
 import itertools
+import logging
 import os.path
 
 import numpy as np
@@ -9,6 +10,8 @@ from pywintypes import com_error
 
 from .macro_execution import run_and_raise_macro, wrap_macros
 from .timeout_utils import TimeoutComponentMixin, kill_pid
+
+logger = logging.getLogger(__package__)
 
 
 def nans(shape):
@@ -45,14 +48,18 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
 
     def ensure_app(self):
         if not self.app_pid:
+            logger.debug("Starting Excel...")
             self.app = xlwings.App(visible=False, add_book=False)
             self.app_pid = self.app.pid
+            logger.info(f"Excel started, PID {self.app_pid}.")
             self.app.display_alerts = False
             self.app.screen_updating = False
 
     def open_and_run(self, inputs, outputs, discrete_inputs, discrete_outputs):
         self.ensure_app()
-        book = self.app.books.open(self.options["file_path"])
+        file_path = self.options["file_path"]
+        logger.debug(f"Opening {file_path}...")
+        book = self.app.books.open(file_path)
 
         all_macros = set(
             itertools.chain(
@@ -62,6 +69,7 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
             )
         )
 
+        logger.debug("Wrapping macros...")
         if len(all_macros):
             wrap_macros(book, all_macros)
 
@@ -71,9 +79,11 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
         self.app.calculation = "manual"
         for var in self.options["inputs"]:
             self.app.range(var.range).options(convert=np.array).value = inputs[var.name]
+            logger.debug(f"Input variable {var.name} set to range {var.range}.")
 
         self.app.calculation = "automatic"
         self.app.calculate()
+        logger.debug("Workbook re-calculated.")
 
         for macro in self.options["main_macros"]:
             run_and_raise_macro(book, macro, "main")
@@ -82,12 +92,14 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
             outputs[var.name] = (
                 self.app.range(var.range).options(convert=np.array).value
             )
+            logger.debug(f"Output variable {var.name} set from range {var.range}.")
 
         for macro in self.options["post_macros"]:
             run_and_raise_macro(book, macro, "post")
 
         # Closes without saving
         book.close()
+        logger.debug(f"Closed {file_path}.")
 
     def compute(self, inputs, outputs, discrete_inputs=None, discrete_outputs=None):
         try:
@@ -101,6 +113,7 @@ class ExcelComponent(TimeoutComponentMixin, om.ExplicitComponent):
                 raise exc
 
     def handle_timeout(self):
+        logger.info(f"Excel component timed out. Killing PID {self.app_pid}.")
         kill_pid(self.app_pid)
         self.app_pid = None
 
