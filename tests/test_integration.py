@@ -30,6 +30,7 @@ class ExecutionTime:
         return (self.end - self.start) if (self.start and self.end) else None
 
 
+@settings(deadline=5000)
 @given(st.floats(allow_nan=False, allow_infinity=False))
 @pytest.mark.parametrize("mode", ["formula", "macro"])
 def test_continuous_finite_scalar(mode, value):
