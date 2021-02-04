@@ -1,0 +1,36 @@
+{% set data = load_setup_py_data() %}
+{% set version = environ.get("GIT_DESCRIBE_TAG", "0").lstrip("v") %}
+
+package:
+  name: openmdao-bridge-excel
+  version: "{{ version }}"
+
+about:
+  home: https://github.com/ovidner/openmdao-bridge-excel
+  license: MIT
+  license_file: LICENSE.txt
+
+source:
+  git_url: ../
+
+build:
+  noarch: python
+  script: "python -m pip install . --no-deps --ignore-installed -vv "
+  number: {{ environ.get('GIT_DESCRIBE_NUMBER', 0) }}
+
+requirements:
+  build:
+    - python
+    - pip
+    - setuptools_scm
+  run:
+    - numpy
+    - openmdao
+    - psutil
+    - python
+    - pywin32
+    - xlwings
+
+test:
+  imports:
+    - openmdao_bridge_excel
