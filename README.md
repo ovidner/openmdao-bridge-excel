@@ -1,5 +1,8 @@
 OpenMDAO Bridge for Excel
 =========================
+
+[![DOI](https://zenodo.org/badge/DOI/10/grkj.svg)](https://doi.org/grkj)
+
 A reusable component for running Excel analyses from OpenMDAO. It uses `xlwings` to communicate with Excel and works through the following procedure:
 1. Start Excel.
 2. Open a pre-defined workbook file.
